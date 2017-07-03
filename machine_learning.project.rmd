@@ -1,0 +1,90 @@
+---
+title: 'Peer-Graded Assignment: Prediction Assignment Writeup'
+author: "Bryan L. Mack"
+date: "July 3, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r mypackages}
+library(caret) #implicitly loads lattice and ggplot2
+library(randomForest)
+library(rpart) #to build decision tree
+library(rpart.plot) #for the appendix, display decision tree
+library(e1071) #need to build confusionMatrix
+```
+
+
+```{r loaddata, echo=FALSE}
+set.seed(5150)
+training_set <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+testing_set  <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+```{r reducenoise, echo=FALSE}
+#Reducing noise by getting rid of fields we do not need to build the predictors
+# Subset data
+training_set   <- training_set[,-c(1:7)]
+testing_set    <- testing_set[,-c(1:7)]
+#Need to remove the 0s for the random forest generation
+training_set <- training_set[, colSums(is.na(training_set)) == 0]
+testing_set <- testing_set[, colSums(is.na(testing_set)) == 0]
+```
+
+Cross Validation & Out of Sample Error
+
+Cross validation will be done by splitting the training set into two groups. We can't use the test set when building the model or it becomes part of the training set (out of sample error), so we estimate the test set accuracy with the training set by building a predictor set. This is known as cross-validation. I will test a couple of models against this to determine the best model to use for prediction. Our goal is to capture all of the signal, but none of the noise.
+
+I will use 70 percent for training, and 30 percent for validation
+
+```{r xvalid, echo=FALSE}
+xval_train <- createDataPartition(y=training_set$classe,p=.7,list=FALSE)
+trainTrain <- training_set[xval_train,]
+trainPredict <- training_set[-xval_train,]
+```
+
+Train two different models, I will attempt a random forest and a decision tree. I will use whichever predicts most accurately.
+
+```{r predictivemodels, echo=FALSE}
+#Decision Tree
+mackTree <- rpart(classe ~ .,data=trainTrain, method="class")
+#Display the Tree
+prp(mackTree)
+#Predict against the tree
+mackTreePred <- predict(mackTree, trainPredict, type="class")
+#Test how the model performed
+confusionMatrix(mackTreePred,trainPredict$classe)
+#Out of Sample Error
+mackTreeOose <- (1 - as.numeric(confusionMatrix(mackTreePred,trainPredict$classe)$overall[1]))
+#Decision Tree Out of Sample Error is .2904
+
+#Random Forest
+mackForest <- randomForest(classe ~ ., data=trainTrain, method="class")
+#Predict against the forest
+mackForestPred <- predict(mackForest, trainPredict, type="class")
+#Test how the model performed
+confusionMatrix(mackForestPred, trainPredict$classe)
+#Out of Sample Error
+mackForestOose <- (1 - as.numeric(confusionMatrix(mackForestPred, trainPredict$classe)$overall[1]))
+#Random Forest Out of Sample Error is .0054
+```
+
+Out of Sample Errors (from OOSE variables):
+Decision Tree: 29.04%
+Random Forest: 0.54%
+
+Accuracy (from Confusion Matrix):
+Decision Tree: 70.1%
+Random Forest: 99.46%
+
+I am going to use the Random forest due to its low generalization error, and high accuracy.
+
+```{r quizanswers, echo=FALSE}
+predict(mackForest,testing_set, type="class")
+```
